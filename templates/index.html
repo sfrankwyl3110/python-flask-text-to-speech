@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flask Audio Player</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-EVSTQN3/azprG1Anm3QDgpJLIm9Nao0Yz1ztcQTwFspd3yD65VohhpuuCOmLASjC" crossorigin="anonymous">
+
+    <script src="{{ url_for('static', filename='jquery-3.7.1.min.js') }}"></script>
+    <style>
+        .left-container {
+            position: absolute;
+            left: 0;
+            top: 2vh;
+            padding: 1rem;
+            margin-top: 10vh;
+            max-height: 88vh;
+        }
+        .spinner {
+            width: 200px;
+            height: 200px;
+        }
+        .dsp_none {
+            display: none;
+        }
+        #phrase_txtField {
+            min-width: 35vw;
+        }
+        .audio_minWidth {
+            min-width: 35vw;
+        }
+        .dark-mode {
+            background-color: #121212;
+            color: #ffffff;
+        }
+        .dark-mode .form-control {
+            background-color: #333333;
+            color: #ffffff;
+            border: 1px solid #444444;
+        }
+        .dark-mode .btn-primary {
+            background-color: #444444;
+            border: 1px solid #555555;
+        }
+        .help_container {
+            padding: 1em;
+        }
+        .debug_container {
+            padding: 1em;
+            border: 1px dotted #373737;
+            margin-top: 1em;
+        }
+
+        table#responses_list > tbody > tr > td {
+            color: #FFF;
+        }
+
+        #toggleDarkMode {
+            position: absolute; 
+            right: 1vw;
+            top: 0;
+        }
+        .maxHeight_overflowY {
+            max-height: 58vh; 
+            overflow-y: scroll;
+        }
+    </style>
+</head>
+<body class="dark-mode">
+    <button id="toggleDarkMode" class="btn btn-secondary mt-3">Toggle Dark Mode</button>
+    <h1 style="margin: 1rem;">Speech Generation</h1>
+    <div class="container-fluid left-container dark-mode">
+        <div class="row">
+            <div class="col-12">
+                <form id="generateForm" action="/generate" method="POST">
+                    <input type="text" id="phrase_txtField" name="phrase" placeholder="Enter a phrase" class="form-control mb-3">
+                </form>
+            </div>
+        </div>
+        <div class="row">
+            <div class="col-12">
+                <div class="help_container">
+                Press 'Enter' after inserting a text to submit
+                </div>
+            </div>
+        </div>
+        <div class="row">
+            <div class="col-12">
+                <img id="spinner" class="spinner dsp_none" src="/static/Spinner@1x-1.0s-200px-200px.svg" alt="Loading...">
+            </div>
+        </div>
+        <div class="row">
+            <div class="col-12">
+                <audio id="audioPlayer" class="dsp_none audio_minWidth" controls autoplay>
+                    Your browser does not support the audio element.
+                </audio>
+            </div>
+        </div>
+        <div class="row">
+            <div class="col-12">
+                <button id="playAudioBtn" class="btn btn-primary mt-3 dsp_none">Play Audio Again</button>
+            </div>
+        </div>
+        <div class="row">
+            <div class="col-12">
+                <div class="debug_container">
+                    <span id="debug"></span>
+                </div>
+            </div>
+        </div>
+        <div class="row">
+            <div class="col-12">
+                <input type="button" id="toggle_AudioPlayer" value="Show/Hide Audio Player">
+                <input type="button" id="update_list" value="Update List">
+            </div>
+        </div>
+        <div class="row">
+            <div class="col-12 maxHeight_overflowY">
+                <table id="responses_list" class="table table-striped dark-mode">
+                    <thead>
+                        <tr>
+                            <th>Created At</th>
+                            <th style="min-width: 24vw;">Input</th>
+                            <th>Filename</th>
+                            <th>Model</th>
+                            <th>Response Format</th>
+                            <th>Speed</th>
+                            <th>Voice</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <!-- Table rows will be populated here -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        
+        const audioPlayer = document.getElementById('audioPlayer');
+        const phraseTxtField = document.getElementById('phrase_txtField');
+        
+
+    function loadAndPlay(element) {
+        let base64_filename = $(element).parent().parent().find($("td[data-id='filename']")).html()
+        let phrase_input = $(element).parent().parent().find($("td[data-id='input']")).html()
+        let mp3_filename = base64_filename.split(".base64")[0]+".mp3"
+        $.ajax({
+            url: '/load_mp3',
+            method: 'POST',
+            data: {
+                mp3_file: mp3_filename
+            },
+            statusCode: {
+                404: function() {
+                    console.log('404: load_mp3')
+                }
+            },
+            success: function(data) {
+                
+                $(phraseTxtField).val(phrase_input)
+                $(phraseTxtField).prop('disabled', true)
+                audioPlayer.src = "data:audio/mp3;base64," + data.base64;
+                audioPlayer.currentTime = 0;
+                audioPlayer.play();
+                phraseTxtField.focus();
+                phraseTxtField.select();
+                
+            }
+        })
+    }
+    function get_list() {
+        $.ajax({
+                url: '/get_responses_list',
+                method: 'GET',
+                statusCode: {
+                    404: function() {
+                        console.log('404:')
+                    }
+                },
+                success: function(data) {
+                    populateTable(data);
+
+                    console.log(JSON.stringify(data))
+                }
+            })
+    }
+    function populateTable(data) {
+            const tableBody = document.querySelector('#responses_list tbody');
+            tableBody.innerHTML = ''; // Clear any existing rows
+            data.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+            data.forEach(item => {
+                const row = document.createElement('tr');
+                
+                row.innerHTML = `
+                    <td>${new Date(item.created_at).toLocaleString()}</td>
+                    <td data-id='input'>${item.input}</td>
+                    <td data-id='filename'>${item.filename}</td>
+                    <td>${item.model}</td>
+                    <td>${item.response_format}</td>
+                    <td>${item.speed}</td>
+                    <td>${item.voice}</td>
+                    <td><input type='button' value='load and play' onclick='loadAndPlay(this)'></td>
+                `;
+                
+                tableBody.appendChild(row);
+            });
+        }
+        $(document).ready(function() {
+            get_list() 
+        })
+        document.getElementById('phrase_txtField').addEventListener('keypress', function(ev) {
+            if(ev.keyCode == 13) {
+                submitForm($("#generateForm")[0])
+            }    
+        });
+
+        audioPlayer.addEventListener('ended', function() {
+            $("#debug").html('Audio has finished playing.');
+            $("#playAudioBtn").removeClass('dsp_none');
+            $(phraseTxtField).prop('disabled', false);
+            $(phraseTxtField).focus();
+            $(phraseTxtField).select();
+            get_list()
+        });
+
+        audioPlayer.addEventListener('play', function() {
+            $("#debug").html('Audio is playing.');
+        });
+
+        function submitForm (element) {
+            const formData = new FormData(element);
+            $.ajax({
+                url: "/generate",
+                method: "POST",
+                data: formData,
+                contentType: false,
+                processData: false,
+                beforeSend: function() {
+                    $("#phrase_txtField").prop('disabled', true);
+                    $('#spinner').removeClass('dsp_none');
+                },
+                statusCode: {
+                    404: function() {
+                        console.log("404: generate");
+                    }
+                },
+                success: function(data) {
+                    audioPlayer.src = "data:audio/mp3;base64," + data.audio;
+                    $('#spinner').addClass('dsp_none');
+                }
+            });
+        }
+
+        document.getElementById('toggle_AudioPlayer').addEventListener('click', function() {
+            $("#audioPlayer").toggleClass('dsp_none')
+        });
+
+        document.getElementById('playAudioBtn').addEventListener('click', function() {
+            audioPlayer.currentTime = 0;
+            audioPlayer.play();
+            phraseTxtField.focus();
+            phraseTxtField.select();
+        });
+
+        document.getElementById('toggleDarkMode').addEventListener('click', function() {
+            document.body.classList.toggle('dark-mode');
+            document.querySelector('.container').classList.toggle('dark-mode');
+        });
+
+        document.getElementById('update_list').addEventListener('click', function() {
+            get_list()
+        });
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/js/bootstrap.bundle.min.js" integrity="sha384-MrcW6ZMFYlzcLA8Nl+NtUVF0sA7MsXsP1UyJoMp4YLEuNSfAP+JcXn/tWtIaxVXM" crossorigin="anonymous"></script>
+</body>
+</html>
